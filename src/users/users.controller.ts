@@ -26,19 +26,16 @@ export class UsersController {
 
   @Post()
   @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @Roles(UserRole.SUPERADMIN)
+  @Roles(UserRole.SUPERADMIN, UserRole.COMPANY_ADMIN)
   async create(
     @Body() createUserDto: CreateUserDto,
     @CurrentUser() currentUser,
   ) {
-    console.log('JWT ....', process.env.JWT_SECRET);
-    console.log('currentUser....... reg user', createUserDto);
     return this.usersService.create(createUserDto, currentUser);
   }
 
   @Post('bootstrap')
   async bootstrap(@Body() createUserDto: CreateUserDto) {
-    console.log('currentUser....... bootstrap');
     // Special endpoint for creating the first superadmin only
     const userCount = await this.usersService.count();
 

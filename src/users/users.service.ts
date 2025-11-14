@@ -39,27 +39,56 @@ export class UsersService {
       throw new ConflictException('User with this email already exists');
     }
 
-    // Validate role and company relationship
-    if (createUserDto.role === UserRole.USER && !createUserDto.companyId) {
+    // Validate role and company/location relationships
+    if (
+      createUserDto.role === UserRole.COMPANY_ADMIN &&
+      !createUserDto.companyId
+    ) {
       throw new BadRequestException(
-        'Regular users must be assigned to a company',
+        'Company admins must be assigned to a company',
       );
     }
 
-    if (createUserDto.role === UserRole.SUPERADMIN && createUserDto.companyId) {
+    if (
+      createUserDto.role === UserRole.LOCATION_CONTACT &&
+      (!createUserDto.companyId || !createUserDto.locationId)
+    ) {
       throw new BadRequestException(
-        'Superadmins cannot be assigned to a company',
+        'Location contacts must be assigned to both a company and a location',
       );
+    }
+
+    if (
+      createUserDto.role === UserRole.SUPERADMIN &&
+      (createUserDto.companyId || createUserDto.locationId)
+    ) {
+      throw new BadRequestException(
+        'Superadmins cannot be assigned to a company or location',
+      );
+    }
+
+    // Validate permissions
+    if (createdBy) {
+      if (createdBy.role === UserRole.COMPANY_ADMIN) {
+        // Company admins can only create location contacts for their company
+        if (createUserDto.role !== UserRole.LOCATION_CONTACT) {
+          throw new BadRequestException(
+            'Company admins can only create location contacts',
+          );
+        }
+        if (createUserDto.companyId !== createdBy.companyId) {
+          throw new BadRequestException(
+            'You can only create users for your company',
+          );
+        }
+      }
     }
 
     let password: string;
     let mustChangePassword = false;
 
-    // If created by superadmin and it's a regular user, generate password
-    if (
-      createdBy?.role === UserRole.SUPERADMIN &&
-      createUserDto.role === UserRole.USER
-    ) {
+    // Auto-generate password for company admins and location contacts
+    if (createUserDto.role !== UserRole.SUPERADMIN && !createUserDto.password) {
       password = this.generateRandomPassword();
       mustChangePassword = true;
 
@@ -70,7 +99,6 @@ export class UsersService {
         createUserDto.firstName,
       );
     } else if (createUserDto.password) {
-      // For superadmin creation or self-registration
       password = createUserDto.password;
     } else {
       throw new BadRequestException('Password is required');
@@ -90,12 +118,20 @@ export class UsersService {
   async findAll(currentUser?: User): Promise<User[]> {
     const queryBuilder = this.usersRepository
       .createQueryBuilder('user')
-      .leftJoinAndSelect('user.company', 'company');
+      .leftJoinAndSelect('user.company', 'company')
+      .leftJoinAndSelect('user.location', 'location');
 
-    // If user is not superadmin, only show users from their company
-    if (currentUser && currentUser.role !== UserRole.SUPERADMIN) {
+    // Company admins only see users from their company
+    if (currentUser && currentUser.role === UserRole.COMPANY_ADMIN) {
       queryBuilder.where('user.companyId = :companyId', {
         companyId: currentUser.companyId,
+      });
+    }
+
+    // Location contacts only see themselves
+    if (currentUser && currentUser.role === UserRole.LOCATION_CONTACT) {
+      queryBuilder.where('user.id = :userId', {
+        userId: currentUser.id,
       });
     }
 
@@ -105,7 +141,7 @@ export class UsersService {
   async findOne(id: string, currentUser?: User): Promise<User> {
     const user = await this.usersRepository.findOne({
       where: { id },
-      relations: ['company'],
+      relations: ['company', 'location'],
     });
 
     if (!user) {
@@ -113,8 +149,14 @@ export class UsersService {
     }
 
     // Check access permissions
-    if (currentUser && currentUser.role !== UserRole.SUPERADMIN) {
+    if (currentUser && currentUser.role === UserRole.COMPANY_ADMIN) {
       if (user.companyId !== currentUser.companyId) {
+        throw new NotFoundException(`User with ID ${id} not found`);
+      }
+    }
+
+    if (currentUser && currentUser.role === UserRole.LOCATION_CONTACT) {
+      if (user.id !== currentUser.id) {
         throw new NotFoundException(`User with ID ${id} not found`);
       }
     }
@@ -125,7 +167,7 @@ export class UsersService {
   async findByEmail(email: string): Promise<User | null> {
     return await this.usersRepository.findOne({
       where: { email },
-      relations: ['company'],
+      relations: ['company', 'location'],
     });
   }
 

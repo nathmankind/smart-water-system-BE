@@ -8,11 +8,13 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { Company } from '../../companies/entities/company.entity';
+import { Location } from '../../locations/entities/location.entity';
 import { Exclude } from 'class-transformer';
 
 export enum UserRole {
   SUPERADMIN = 'superadmin',
-  USER = 'user',
+  COMPANY_ADMIN = 'company_admin',
+  LOCATION_CONTACT = 'location_contact',
 }
 
 @Entity('users')
@@ -36,7 +38,7 @@ export class User {
   @Column({
     type: 'enum',
     enum: UserRole,
-    default: UserRole.USER,
+    default: UserRole.LOCATION_CONTACT,
   })
   role: UserRole;
 
@@ -46,6 +48,13 @@ export class User {
   @ManyToOne(() => Company, (company) => company.users, { nullable: true })
   @JoinColumn({ name: 'company_id' })
   company: Company;
+
+  @Column({ name: 'location_id', nullable: true })
+  locationId: string;
+
+  @ManyToOne(() => Location, (location) => location.users, { nullable: true })
+  @JoinColumn({ name: 'location_id' })
+  location: Location;
 
   @Column({ name: 'must_change_password', default: false })
   mustChangePassword: boolean;
