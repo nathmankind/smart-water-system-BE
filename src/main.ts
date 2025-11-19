@@ -24,5 +24,6 @@ async function bootstrap() {
   await app.listen(process.env.PORT ?? 3001);
   console.log(`Application running on environment ${process.env.NODE_ENV} 🚀`);
   console.log(`Application running on ${process.env.PORT || 3001} 🚀`);
+  console.log(`This is the port from env: ${process.env.PORT}`);
 }
 bootstrap();
