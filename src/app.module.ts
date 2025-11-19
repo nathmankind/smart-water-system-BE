@@ -22,7 +22,11 @@ import { LocationsModule } from './locations/locations.module';
       password: process.env.DB_PASSWORD,
       database: process.env.DB_DATABASE,
       entities: [__dirname + '/**/*.entity{.ts,.js}'],
-      synchronize: true, // Set to false in production
+      synchronize: process.env.NODE_ENV !== 'production', // Set to false in production
+      ssl:
+        process.env.NODE_ENV === 'production'
+          ? { rejectUnauthorized: false }
+          : false,
     }),
     UsersModule,
     CompaniesModule,
