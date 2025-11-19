@@ -38,6 +38,7 @@ export class AuthService {
       sub: user.id,
       role: user.role,
       companyId: user.companyId,
+      locationId: user.locationId,
     };
 
     return {
@@ -49,6 +50,7 @@ export class AuthService {
         lastName: user.lastName,
         role: user.role,
         companyId: user.companyId,
+        locationId: user.locationId,
         mustChangePassword: user.mustChangePassword,
       },
     };

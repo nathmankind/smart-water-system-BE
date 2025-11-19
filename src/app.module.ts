@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module';
 import { MailModule } from './mail/mail.module';
 import { User } from './users/entities/user.entity';
 import { Company } from './companies/entities/company.entity';
+import { LocationsModule } from './locations/locations.module';
 
 @Module({
   imports: [
@@ -21,12 +22,17 @@ import { Company } from './companies/entities/company.entity';
       password: process.env.DB_PASSWORD,
       database: process.env.DB_DATABASE,
       entities: [__dirname + '/**/*.entity{.ts,.js}'],
-      synchronize: true, // Set to false in production
+      synchronize: process.env.NODE_ENV !== 'production', // Set to false in production
+      ssl:
+        process.env.NODE_ENV === 'production'
+          ? { rejectUnauthorized: false }
+          : false,
     }),
     UsersModule,
     CompaniesModule,
     AuthModule,
     MailModule,
+    LocationsModule,
   ],
 })
 export class AppModule {}

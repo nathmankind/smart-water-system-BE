@@ -1,0 +1,78 @@
+name: Build and Deploy NestJS Application
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            nathmankind/capstone-nest-app:latest
+            nathmankind/capstone-nest-app:${{ github.sha }}
+          cache-from: type=registry,ref=nathmankind/capstone-nest-app:buildcache
+          cache-to: type=registry,ref=nathmankind/capstone-nest-app:buildcache,mode=max
+
+  deploy:
+    needs: build
+    runs-on: self-hosted
+
+    steps:
+      - name: Pull latest image from Docker Hub
+        run: docker pull nathmankind/capstone-nest-app:latest
+
+      - name: Stop and remove old container
+        run: docker rm -f nest-container || true
+
+      - name: Remove old images
+        run: docker image prune -f
+
+      - name: Run new Docker container
+        run: |
+          docker run -d \
+            -p 3000:3000 \
+            --name nest-container \
+            --restart unless-stopped \
+            -e NODE_ENV=production \
+            -e DB_HOST=${{ secrets.DB_HOST }} \
+            -e DB_PORT=${{ secrets.DB_PORT }} \
+            -e DB_USERNAME=${{ secrets.DB_USERNAME }} \
+            -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+            -e DB_DATABASE=${{ secrets.DB_DATABASE }} \
+            -e JWT_SECRET=${{ secrets.JWT_SECRET }} \
+            -e MAIL_HOST=${{ secrets.MAIL_HOST }} \
+            -e MAIL_PORT=${{ secrets.MAIL_PORT }} \
+            -e MAIL_USER=${{ secrets.MAIL_USER }} \
+            -e MAIL_PASSWORD=${{ secrets.MAIL_PASSWORD }} \
+            -e MAIL_FROM=${{ secrets.MAIL_FROM }} \
+            -e APP_URL=${{ secrets.APP_URL }} \
+            nathmankind/capstone-nest-app:latest
+
+      - name: Check container status
+        run: docker ps -a | grep nest-container
+
+      - name: Display container logs
+        run: docker logs nest-container --tail=50

@@ -4,17 +4,19 @@ import {
   PrimaryGeneratedColumn,
   CreateDateColumn,
   UpdateDateColumn,
+  ManyToOne,
+  JoinColumn,
   OneToMany,
 } from 'typeorm';
+import { Company } from '../../companies/entities/company.entity';
 import { User } from '../../users/entities/user.entity';
-import { Location } from '../../locations/entities/location.entity';
 
-@Entity('companies')
-export class Company {
+@Entity('locations')
+export class Location {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ unique: true })
+  @Column()
   name: string;
 
   @Column({ name: 'contact_email' })
@@ -22,6 +24,9 @@ export class Company {
 
   @Column({ name: 'contact_phone' })
   contactPhone: string;
+
+  @Column({ name: 'ip_address', nullable: true })
+  ipAddress: string;
 
   @Column()
   address: string;
@@ -38,11 +43,17 @@ export class Company {
   @Column({ default: 'Canada' })
   country: string;
 
-  @OneToMany(() => User, (user) => user.company)
-  users: User[];
+  @Column({ name: 'company_id' })
+  companyId: string;
 
-  @OneToMany(() => Location, (location) => location.company)
-  locations: Location[];
+  @ManyToOne(() => Company, (company) => company.locations, {
+    onDelete: 'CASCADE',
+  })
+  @JoinColumn({ name: 'company_id' })
+  company: Company;
+
+  @OneToMany(() => User, (user) => user.location)
+  users: User[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

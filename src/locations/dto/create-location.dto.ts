@@ -1,27 +1,14 @@
 import {
   IsEmail,
   IsNotEmpty,
+  IsOptional,
   IsString,
   Matches,
-  ValidateNested,
+  IsUUID,
+  IsIP,
 } from 'class-validator';
-import { Type } from 'class-transformer';
 
-export class CompanyAdminContactDto {
-  @IsNotEmpty()
-  @IsString()
-  firstName: string;
-
-  @IsNotEmpty()
-  @IsString()
-  lastName: string;
-
-  @IsNotEmpty()
-  @IsEmail()
-  email: string;
-}
-
-export class CreateCompanyDto {
+export class CreateLocationDto {
   @IsNotEmpty()
   @IsString()
   name: string;
@@ -35,6 +22,10 @@ export class CreateCompanyDto {
     message: 'Invalid phone number format',
   })
   contactPhone: string;
+
+  @IsOptional()
+  @IsIP()
+  ipAddress?: string;
 
   @IsNotEmpty()
   @IsString()
@@ -55,7 +46,6 @@ export class CreateCompanyDto {
   postalCode: string;
 
   @IsNotEmpty()
-  @ValidateNested()
-  @Type(() => CompanyAdminContactDto)
-  adminContact: CompanyAdminContactDto;
+  @IsUUID()
+  companyId: string;
 }
