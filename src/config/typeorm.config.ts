@@ -17,10 +17,11 @@ export default new DataSource({
   entities: [User, Company, Location],
   migrations: ['src/migrations/*.ts'],
   synchronize: false,
-  ssl:
-    process.env.NODE_ENV === 'production'
-      ? {
-          rejectUnauthorized: false,
-        }
-      : false,
+  //   ssl:
+  // process.env.NODE_ENV === 'production'
+  //   ? {
+  //       rejectUnauthorized: false,
+  //     }
+  //   : false,
+  ssl: false,
 });
