@@ -9,7 +9,7 @@ import {
   OneToMany,
 } from 'typeorm';
 import { Company } from '../../companies/entities/company.entity';
-import { User } from 'src/users/entities/user.entity';
+import { User } from '../../users/entities/user.entity';
 
 @Entity('locations')
 export class Location {
@@ -40,7 +40,7 @@ export class Location {
   @Column({ name: 'postal_code' })
   postalCode: string;
 
-  @Column({ default: 'Canada' })
+  @Column()
   country: string;
 
   @Column({ name: 'company_id' })

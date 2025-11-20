@@ -61,6 +61,10 @@ export class CreateLocationDto {
   postalCode: string;
 
   @IsNotEmpty()
+  @IsString()
+  country: string;
+
+  @IsNotEmpty()
   @IsUUID()
   companyId: string;
 
