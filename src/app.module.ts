@@ -27,7 +27,9 @@ import { LocationsModule } from './locations/locations.module';
       //   process.env.NODE_ENV === 'production'
       //     ? { rejectUnauthorized: false }
       //     : false,
-      ssl: false,
+      ssl: {
+        rejectUnauthorized: false,
+      },
     }),
     UsersModule,
     CompaniesModule,

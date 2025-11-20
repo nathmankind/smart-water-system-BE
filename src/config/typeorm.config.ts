@@ -23,5 +23,7 @@ export default new DataSource({
   //       rejectUnauthorized: false,
   //     }
   //   : false,
-  ssl: false,
+  ssl: {
+    rejectUnauthorized: false,
+  },
 });

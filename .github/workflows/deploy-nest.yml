@@ -47,17 +47,17 @@ jobs:
       - name: Stop and remove old container
         run: docker rm -f nest-container || true
 
-      - name: Run database migrations
-        run: |
-          docker run --rm \
-            -e NODE_ENV=production \
-            -e DB_HOST=${{ secrets.DB_HOST }} \
-            -e DB_PORT=${{ secrets.DB_PORT }} \
-            -e DB_USERNAME=${{ secrets.DB_USERNAME }} \
-            -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
-            -e DB_DATABASE=${{ secrets.DB_DATABASE }} \
-            nathmankind/capstone-nest-app:latest \
-            npm run migration:run
+      # - name: Run database migrations
+      #   run: |
+      #     docker run --rm \
+      #       -e NODE_ENV=production \
+      #       -e DB_HOST=${{ secrets.DB_HOST }} \
+      #       -e DB_PORT=${{ secrets.DB_PORT }} \
+      #       -e DB_USERNAME=${{ secrets.DB_USERNAME }} \
+      #       -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+      #       -e DB_DATABASE=${{ secrets.DB_DATABASE }} \
+      #       nathmankind/capstone-nest-app:latest \
+      #       npm run migration:run
 
       - name: Remove old images
         run: docker image prune -f
