@@ -9,7 +9,7 @@ import {
   OneToMany,
 } from 'typeorm';
 import { Company } from '../../companies/entities/company.entity';
-import { User } from '../../users/entities/user.entity';
+import { User } from 'src/users/entities/user.entity';
 
 @Entity('locations')
 export class Location {
@@ -25,8 +25,8 @@ export class Location {
   @Column({ name: 'contact_phone' })
   contactPhone: string;
 
-  @Column({ name: 'ip_address', nullable: true })
-  ipAddress: string;
+  @Column({ name: 'device_id', unique: true })
+  deviceId: string;
 
   @Column()
   address: string;

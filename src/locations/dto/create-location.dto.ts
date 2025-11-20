@@ -5,8 +5,23 @@ import {
   IsString,
   Matches,
   IsUUID,
-  IsIP,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
+
+export class LocationContactDto {
+  @IsNotEmpty()
+  @IsString()
+  firstName: string;
+
+  @IsNotEmpty()
+  @IsString()
+  lastName: string;
+
+  @IsOptional()
+  @IsEmail()
+  email?: string; // Optional - will use contactEmail if not provided
+}
 
 export class CreateLocationDto {
   @IsNotEmpty()
@@ -23,9 +38,9 @@ export class CreateLocationDto {
   })
   contactPhone: string;
 
-  @IsOptional()
-  @IsIP()
-  ipAddress?: string;
+  @IsNotEmpty()
+  @IsString()
+  deviceId: string;
 
   @IsNotEmpty()
   @IsString()
@@ -48,4 +63,9 @@ export class CreateLocationDto {
   @IsNotEmpty()
   @IsUUID()
   companyId: string;
+
+  @IsNotEmpty()
+  @ValidateNested()
+  @Type(() => LocationContactDto)
+  locationContact: LocationContactDto;
 }

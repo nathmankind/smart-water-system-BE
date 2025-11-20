@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -9,18 +10,20 @@ import { Location } from './entities/location.entity';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
 import { User, UserRole } from '../users/entities/user.entity';
+import { UsersService } from '../users/users.service';
 
 @Injectable()
 export class LocationsService {
   constructor(
     @InjectRepository(Location)
     private locationsRepository: Repository<Location>,
+    private usersService: UsersService,
   ) {}
 
   async create(
     createLocationDto: CreateLocationDto,
     currentUser: User,
-  ): Promise<Location> {
+  ): Promise<{ location: Location; contactUser: any }> {
     // Company admins can only create locations for their own company
     if (currentUser.role === UserRole.COMPANY_ADMIN) {
       if (createLocationDto.companyId !== currentUser.companyId) {
@@ -30,8 +33,42 @@ export class LocationsService {
       }
     }
 
-    const location = this.locationsRepository.create(createLocationDto);
-    return await this.locationsRepository.save(location);
+    // Check if deviceId already exists
+    const existingLocation = await this.locationsRepository.findOne({
+      where: { deviceId: createLocationDto.deviceId },
+    });
+
+    if (existingLocation) {
+      throw new ConflictException(
+        'A location with this device ID already exists',
+      );
+    }
+
+    // Extract location contact from DTO
+    const { locationContact, ...locationData } = createLocationDto;
+
+    // Create location
+    const location = this.locationsRepository.create(locationData);
+    const savedLocation = await this.locationsRepository.save(location);
+
+    // Use contactEmail if locationContact.email is not provided
+    const contactUserEmail =
+      locationContact.email || createLocationDto.contactEmail;
+
+    // Create location contact user automatically
+    const contactUser = await this.usersService.create(
+      {
+        firstName: locationContact.firstName,
+        lastName: locationContact.lastName,
+        email: contactUserEmail,
+        role: UserRole.LOCATION_CONTACT,
+        companyId: savedLocation.companyId,
+        locationId: savedLocation.id,
+      },
+      currentUser,
+    );
+
+    return { location: savedLocation, contactUser };
   }
 
   async findAll(currentUser: User): Promise<Location[]> {
@@ -81,6 +118,13 @@ export class LocationsService {
     }
 
     return location;
+  }
+
+  async findByDeviceId(deviceId: string): Promise<Location | null> {
+    return await this.locationsRepository.findOne({
+      where: { deviceId },
+      relations: ['company', 'users'],
+    });
   }
 
   async findByCompany(companyId: string): Promise<Location[]> {
