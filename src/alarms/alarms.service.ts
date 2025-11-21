@@ -30,6 +30,9 @@ export class AlarmsService {
     },
   };
 
+  private lastNotificationTime: Map<string, number> = new Map();
+  private readonly NOTIFICATION_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+
   constructor(
     @InjectRepository(Alarm)
     private alarmsRepository: Repository<Alarm>,
@@ -334,33 +337,110 @@ export class AlarmsService {
     return stats;
   }
 
-  // async getLatestReading(deviceId: string): Promise<Alarm | null> {
-  //   return await this.alarmsRepository.findOne({
-  //     where: { deviceName: deviceId },
-  //     order: { timestamp: 'DESC' },
+  // async processNewAlarm(alarmData: Partial<Alarm>): Promise<Alarm> {
+  //   console.log('processNewAlarm method called with:', alarmData);
+
+  //   const newAlarm = this.alarmsRepository.create(alarmData);
+  //   const savedAlarm = await this.alarmsRepository.save(newAlarm);
+  //   console.log('Alarm saved:', savedAlarm);
+
+  //   // Find location with company and all users
+  //   const location = await this.locationsRepository.findOne({
+  //     where: { deviceId: savedAlarm.deviceName },
+  //     relations: ['company', 'company.users', 'users'],
   //   });
+
+  //   if (!location) {
+  //     console.error(`Location not found for device: ${savedAlarm.deviceName}`);
+  //     return savedAlarm;
+  //   }
+  //   console.log('Location found:', location.id);
+
+  //   const alarmDto = this.transformToDto(savedAlarm);
+  //   const locationName = location.name;
+
+  //   // Send to location contact
+  //   const locationContact = location.users?.find(
+  //     (user) => user.role === UserRole.LOCATION_CONTACT,
+  //   );
+
+  //   if (locationContact) {
+  //     console.log('Sending to location contact:', locationContact.email);
+  //     await this.mailService.sendAlarmNotificationEmail(
+  //       locationContact.email,
+  //       alarmDto,
+  //       locationName,
+  //     );
+  //   }
+
+  //   // Send to company admin
+  //   const companyAdmin = location.company?.users?.find(
+  //     (user) => user.role === UserRole.COMPANY_ADMIN,
+  //   );
+
+  //   if (companyAdmin) {
+  //     console.log('Sending to company admin:', companyAdmin.email);
+  //     await this.mailService.sendAlarmNotificationEmail(
+  //       companyAdmin.email,
+  //       alarmDto,
+  //       locationName,
+  //     );
+  //   }
+
+  //   return savedAlarm;
   // }
 
-  async processNewAlarm(alarmData: Partial<Alarm>): Promise<Alarm> {
+  private shouldSendNotification(deviceName: string): boolean {
+    const now = Date.now();
+    const lastTime = this.lastNotificationTime.get(deviceName);
+
+    if (lastTime && now - lastTime < this.NOTIFICATION_COOLDOWN_MS) {
+      const minutesRemaining = Math.ceil(
+        (this.NOTIFICATION_COOLDOWN_MS - (now - lastTime)) / 60000,
+      );
+      console.log(
+        `⏳ Cooldown active for ${deviceName}. Next notification in ${minutesRemaining} minutes`,
+      );
+      return false;
+    }
+
+    this.lastNotificationTime.set(deviceName, now);
+    return true;
+  }
+
+  async processNewAlarm(alarmData: Partial<Alarm>): Promise<void> {
     console.log('processNewAlarm method called with:', alarmData);
 
-    const newAlarm = this.alarmsRepository.create(alarmData);
-    const savedAlarm = await this.alarmsRepository.save(newAlarm);
-    console.log('Alarm saved:', savedAlarm);
+    const deviceName = alarmData.deviceName as string;
+
+    // Transform to DTO to check severity
+    const alarmDto = this.transformToDto(alarmData as Alarm);
+
+    // Only send notifications for critical and warning alarms
+    if (alarmDto.severity !== 'critical' && alarmDto.severity !== 'warning') {
+      console.log(
+        `⏭️  Skipping notification - severity is ${alarmDto.severity}`,
+      );
+      return;
+    }
+
+    // Check rate limiting
+    if (!this.shouldSendNotification(deviceName)) {
+      return;
+    }
 
     // Find location with company and all users
     const location = await this.locationsRepository.findOne({
-      where: { deviceId: savedAlarm.deviceName },
+      where: { deviceId: deviceName },
       relations: ['company', 'company.users', 'users'],
     });
 
     if (!location) {
-      console.error(`Location not found for device: ${savedAlarm.deviceName}`);
-      return savedAlarm;
+      console.error(`Location not found for device: ${deviceName}`);
+      return;
     }
     console.log('Location found:', location.id);
 
-    const alarmDto = this.transformToDto(savedAlarm);
     const locationName = location.name;
 
     // Send to location contact
@@ -391,6 +471,6 @@ export class AlarmsService {
       );
     }
 
-    return savedAlarm;
+    console.log('✅ Notification processing completed');
   }
 }
