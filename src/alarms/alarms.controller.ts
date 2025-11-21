@@ -1,10 +1,18 @@
-import { Controller, Get, Query, Param, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Query,
+  Param,
+  UseGuards,
+  Post,
+  Body,
+} from '@nestjs/common';
 import { AlarmsService } from './alarms.service';
 import { AlarmQueryDto } from './dto/alarm-response.dto';
 import { AuthGuard } from '@nestjs/passport';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { User } from '../users/entities/user.entity';
-import { AlarmSeverity, AlarmType } from './entities/alarm.entity';
+import { Alarm, AlarmSeverity, AlarmType } from './entities/alarm.entity';
 
 @Controller('alarms')
 @UseGuards(AuthGuard('jwt'))
@@ -52,5 +60,10 @@ export class AlarmsController {
     @CurrentUser() currentUser: User,
   ) {
     return this.alarmsService.getStatistics(deviceId, currentUser);
+  }
+
+  @Post('process')
+  async processNewReading(@Body() alarmData: Partial<Alarm>) {
+    return this.alarmsService.processNewAlarm(alarmData);
   }
 }

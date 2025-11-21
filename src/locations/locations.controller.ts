@@ -18,6 +18,7 @@ import { UserRole } from '../users/entities/user.entity';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AlarmsService } from '../alarms/alarms.service';
 import { CurrentReadings, AlarmSummary } from './dto/location-details.dto';
+import { AlarmResponseDto } from 'src/alarms/dto/alarm-response.dto';
 
 @Controller('locations')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -46,47 +47,122 @@ export class LocationsController {
     return this.locationsService.findOne(id, currentUser);
   }
 
+  // @Get(':id/details')
+  // async getLocationDetails(
+  //   @Param('id') id: string,
+  //   @CurrentUser() currentUser,
+  // ) {
+  //   // First get the location to get the deviceId
+  //   const location = await this.locationsService.findOne(id, currentUser);
+
+  //   // Get alarms for this location's device
+  //   const alarms = await this.alarmsService.findByDevice(
+  //     location.deviceId,
+  //     currentUser,
+  //   );
+
+  //   // Get latest reading
+  //   const latestReading = await this.alarmsService.getLatestReading(
+  //     location.deviceId,
+  //   );
+
+  //   // Filter active alarms (critical and warning from last 24 hours)
+  //   const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  //   const activeAlarms = alarms.filter(
+  //     (alarm) =>
+  //       (alarm.severity === 'critical' || alarm.severity === 'warning') &&
+  //       new Date(alarm.timestamp) > twentyFourHoursAgo,
+  //   );
+
+  //   // Count alarms by severity
+  //   const criticalCount = alarms.filter(
+  //     (a) => a.severity === 'critical',
+  //   ).length;
+  //   const warningCount = alarms.filter((a) => a.severity === 'warning').length;
+
+  //   // Prepare current readings
+  //   const currentReadings: CurrentReadings = latestReading
+  //     ? {
+  //         turbidity: latestReading.turbidity,
+  //         ph: latestReading.ph ? Number(latestReading.ph) : 0.0,
+  //         temperature: latestReading.temperature
+  //           ? Number(latestReading.temperature)
+  //           : 0.0,
+  //         voltage: Number(latestReading.voltage),
+  //         condition: latestReading.condition,
+  //         timestamp: latestReading.timestamp,
+  //       }
+  //     : {
+  //         turbidity: 0,
+  //         ph: 0.0,
+  //         temperature: 0.0,
+  //         voltage: 0.0,
+  //         condition: '--',
+  //         timestamp: new Date(),
+  //       };
+
+  //   // Prepare alarm summary
+  //   const alarmSummary: AlarmSummary = {
+  //     total: alarms.length,
+  //     critical: criticalCount,
+  //     warning: warningCount,
+  //     activeAlarms: activeAlarms.slice(0, 10), // Limit to 10 most recent active alarms
+  //     latestReading: currentReadings,
+  //   };
+
+  //   // Get complete location details
+  //   return this.locationsService.getLocationWithDetails(
+  //     id,
+  //     currentUser,
+  //     alarmSummary,
+  //   );
+  // }
+
   @Get(':id/details')
   async getLocationDetails(
     @Param('id') id: string,
     @CurrentUser() currentUser,
   ) {
-    // First get the location to get the deviceId
     const location = await this.locationsService.findOne(id, currentUser);
 
-    // Get alarms for this location's device
+    // Get latest reading first
+    const latestReading = await this.alarmsService.getLatestReading(
+      location.deviceId,
+    );
+
+    // Determine if latest reading has an alarm
+    let activeAlarm: AlarmResponseDto | null = null;
+    if (latestReading) {
+      const latestAlarmDto =
+        this.alarmsService['transformToDto'](latestReading);
+
+      // Only set as active if it's critical or warning
+      if (
+        latestAlarmDto.severity === 'critical' ||
+        latestAlarmDto.severity === 'warning'
+      ) {
+        activeAlarm = latestAlarmDto;
+      }
+    }
+
+    // Get all alarms for statistics
     const alarms = await this.alarmsService.findByDevice(
       location.deviceId,
       currentUser,
     );
 
-    // Get latest reading
-    const latestReading = await this.alarmsService.getLatestReading(
-      location.deviceId,
-    );
-
-    // Filter active alarms (critical and warning from last 24 hours)
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const activeAlarms = alarms.filter(
-      (alarm) =>
-        (alarm.severity === 'critical' || alarm.severity === 'warning') &&
-        new Date(alarm.timestamp) > twentyFourHoursAgo,
-    );
-
-    // Count alarms by severity
     const criticalCount = alarms.filter(
       (a) => a.severity === 'critical',
     ).length;
     const warningCount = alarms.filter((a) => a.severity === 'warning').length;
 
-    // Prepare current readings
     const currentReadings: CurrentReadings = latestReading
       ? {
           turbidity: latestReading.turbidity,
-          ph: latestReading.ph ? Number(latestReading.ph) : 0.0,
+          ph: latestReading.ph ? Number(latestReading.ph) : 0,
           temperature: latestReading.temperature
             ? Number(latestReading.temperature)
-            : 0.0,
+            : 0,
           voltage: Number(latestReading.voltage),
           condition: latestReading.condition,
           timestamp: latestReading.timestamp,
@@ -100,16 +176,14 @@ export class LocationsController {
           timestamp: new Date(),
         };
 
-    // Prepare alarm summary
     const alarmSummary: AlarmSummary = {
       total: alarms.length,
       critical: criticalCount,
       warning: warningCount,
-      activeAlarms: activeAlarms.slice(0, 10), // Limit to 10 most recent active alarms
+      activeAlarms: activeAlarm ? [activeAlarm] : [], // Only show if there's an active alarm
       latestReading: currentReadings,
     };
 
-    // Get complete location details
     return this.locationsService.getLocationWithDetails(
       id,
       currentUser,

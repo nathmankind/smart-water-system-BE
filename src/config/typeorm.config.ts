@@ -7,15 +7,15 @@ import { Location } from '../locations/entities/location.entity';
 // Load environment variables
 config();
 
-export default new DataSource({
+export const dataSource = new DataSource({
   type: 'postgres',
   host: process.env.DB_HOST,
   port: parseInt(process.env.DB_PORT || '5432'),
   username: process.env.DB_USERNAME,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_DATABASE,
-  entities: [User, Company, Location],
-  migrations: ['src/migrations/*.ts'],
+  entities: ['dist/**/*.entity.js'], // Use compiled JS in production
+  migrations: ['dist/migrations/*.js'],
   synchronize: false,
   ssl:
     process.env.NODE_ENV === 'production'
