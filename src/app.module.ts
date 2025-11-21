@@ -8,6 +8,7 @@ import { MailModule } from './mail/mail.module';
 import { User } from './users/entities/user.entity';
 import { Company } from './companies/entities/company.entity';
 import { LocationsModule } from './locations/locations.module';
+import { AlarmsModule } from './alarms/alarms.module';
 
 @Module({
   imports: [
@@ -23,19 +24,20 @@ import { LocationsModule } from './locations/locations.module';
       database: process.env.DB_DATABASE,
       entities: [__dirname + '/**/*.entity{.ts,.js}'],
       synchronize: process.env.NODE_ENV !== 'production', // Set to false in production
-      // ssl:
-      //   process.env.NODE_ENV === 'production'
-      //     ? { rejectUnauthorized: false }
-      //     : false,
-      ssl: {
-        rejectUnauthorized: false,
-      },
+      ssl:
+        process.env.NODE_ENV === 'production'
+          ? { rejectUnauthorized: false }
+          : false,
+      // ssl: {
+      //   rejectUnauthorized: false,
+      // },
     }),
     UsersModule,
     CompaniesModule,
     AuthModule,
     MailModule,
     LocationsModule,
+    AlarmsModule,
   ],
 })
 export class AppModule {}

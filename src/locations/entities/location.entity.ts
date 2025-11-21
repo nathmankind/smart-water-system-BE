@@ -25,8 +25,8 @@ export class Location {
   @Column({ name: 'contact_phone' })
   contactPhone: string;
 
-  @Column({ name: 'ip_address', nullable: true })
-  ipAddress: string;
+  @Column({ name: 'device_id', unique: true })
+  deviceId: string;
 
   @Column()
   address: string;
@@ -40,7 +40,7 @@ export class Location {
   @Column({ name: 'postal_code' })
   postalCode: string;
 
-  @Column({ default: 'Canada' })
+  @Column()
   country: string;
 
   @Column({ name: 'company_id' })

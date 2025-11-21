@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -9,18 +10,26 @@ import { Location } from './entities/location.entity';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
 import { User, UserRole } from '../users/entities/user.entity';
+import { UsersService } from '../users/users.service';
+import {
+  LocationDetailsDto,
+  LocationContactInfo,
+  CurrentReadings,
+  AlarmSummary,
+} from './dto/location-details.dto';
 
 @Injectable()
 export class LocationsService {
   constructor(
     @InjectRepository(Location)
     private locationsRepository: Repository<Location>,
+    private usersService: UsersService,
   ) {}
 
   async create(
     createLocationDto: CreateLocationDto,
     currentUser: User,
-  ): Promise<Location> {
+  ): Promise<{ location: Location; contactUser: any }> {
     // Company admins can only create locations for their own company
     if (currentUser.role === UserRole.COMPANY_ADMIN) {
       if (createLocationDto.companyId !== currentUser.companyId) {
@@ -30,8 +39,42 @@ export class LocationsService {
       }
     }
 
-    const location = this.locationsRepository.create(createLocationDto);
-    return await this.locationsRepository.save(location);
+    // Check if deviceId already exists
+    const existingLocation = await this.locationsRepository.findOne({
+      where: { deviceId: createLocationDto.deviceId },
+    });
+
+    if (existingLocation) {
+      throw new ConflictException(
+        'A location with this device ID already exists',
+      );
+    }
+
+    // Extract location contact from DTO
+    const { locationContact, ...locationData } = createLocationDto;
+
+    // Create location
+    const location = this.locationsRepository.create(locationData);
+    const savedLocation = await this.locationsRepository.save(location);
+
+    // Use contactEmail if locationContact.email is not provided
+    const contactUserEmail =
+      locationContact.email || createLocationDto.contactEmail;
+
+    // Create location contact user automatically
+    const contactUser = await this.usersService.create(
+      {
+        firstName: locationContact.firstName,
+        lastName: locationContact.lastName,
+        email: contactUserEmail,
+        role: UserRole.LOCATION_CONTACT,
+        companyId: savedLocation.companyId,
+        locationId: savedLocation.id,
+      },
+      currentUser,
+    );
+
+    return { location: savedLocation, contactUser };
   }
 
   async findAll(currentUser: User): Promise<Location[]> {
@@ -83,6 +126,13 @@ export class LocationsService {
     return location;
   }
 
+  async findByDeviceId(deviceId: string): Promise<Location | null> {
+    return await this.locationsRepository.findOne({
+      where: { deviceId },
+      relations: ['company', 'company.users', 'users'],
+    });
+  }
+
   async findByCompany(companyId: string): Promise<Location[]> {
     return await this.locationsRepository.find({
       where: { companyId },
@@ -104,5 +154,64 @@ export class LocationsService {
   async remove(id: string, currentUser: User): Promise<void> {
     const location = await this.findOne(id, currentUser);
     await this.locationsRepository.remove(location);
+  }
+
+  /**
+   * Get detailed location information with alarms and current readings
+   * This method is meant to be called from the controller with AlarmsService
+   */
+  async getLocationWithDetails(
+    id: string,
+    currentUser: User,
+    alarmSummary: AlarmSummary,
+  ): Promise<LocationDetailsDto> {
+    const location = await this.findOne(id, currentUser);
+
+    // Find the location contact user
+    const locationContact = location.users?.find(
+      (user) => user.role === UserRole.LOCATION_CONTACT,
+    );
+
+    if (!locationContact) {
+      throw new NotFoundException(
+        'Location contact not found for this location',
+      );
+    }
+
+    const locationContactInfo: LocationContactInfo = {
+      id: locationContact.id,
+      firstName: locationContact.firstName,
+      lastName: locationContact.lastName,
+      email: locationContact.email,
+      phone: location.contactPhone,
+      isActive: locationContact.isActive,
+    };
+
+    const locationDetails: LocationDetailsDto = {
+      id: location.id,
+      name: location.name,
+      deviceId: location.deviceId,
+      address: {
+        street: location.address,
+        city: location.city,
+        province: location.province,
+        postalCode: location.postalCode,
+        country: location.country,
+      },
+      contactInfo: {
+        email: location.contactEmail,
+        phone: location.contactPhone,
+      },
+      company: {
+        id: location.company.id,
+        name: location.company.name,
+      },
+      locationContact: locationContactInfo,
+      alarmSummary,
+      createdAt: location.createdAt,
+      updatedAt: location.updatedAt,
+    };
+
+    return locationDetails;
   }
 }
