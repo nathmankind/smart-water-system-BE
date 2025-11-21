@@ -9,6 +9,9 @@ import { User } from './users/entities/user.entity';
 import { Company } from './companies/entities/company.entity';
 import { LocationsModule } from './locations/locations.module';
 import { AlarmsModule } from './alarms/alarms.module';
+import { DashboardController } from './dashboard/dashboard.controller';
+import { DashboardService } from './dashboard/dashboard.service';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -38,6 +41,9 @@ import { AlarmsModule } from './alarms/alarms.module';
     MailModule,
     LocationsModule,
     AlarmsModule,
+    DashboardModule,
   ],
+  controllers: [DashboardController],
+  providers: [DashboardService],
 })
 export class AppModule {}

@@ -33,6 +33,8 @@ export class AlarmsService {
   constructor(
     @InjectRepository(Alarm)
     private alarmsRepository: Repository<Alarm>,
+    @InjectRepository(Location)
+    private locationsRepository: Repository<Location>,
     private locationsService: LocationsService,
     private mailService: MailService,
   ) {}
@@ -341,13 +343,16 @@ export class AlarmsService {
 
   async processNewAlarm(alarmData: Partial<Alarm>): Promise<Alarm> {
     console.log('processNewAlarm method called with:', alarmData);
+
     const newAlarm = this.alarmsRepository.create(alarmData);
     const savedAlarm = await this.alarmsRepository.save(newAlarm);
     console.log('Alarm saved:', savedAlarm);
 
-    const location = await this.locationsService.findByDeviceId(
-      savedAlarm.deviceName,
-    );
+    // Find location with company and all users
+    const location = await this.locationsRepository.findOne({
+      where: { deviceId: savedAlarm.deviceName },
+      relations: ['company', 'company.users', 'users'],
+    });
 
     if (!location) {
       console.error(`Location not found for device: ${savedAlarm.deviceName}`);
@@ -356,41 +361,33 @@ export class AlarmsService {
     console.log('Location found:', location.id);
 
     const alarmDto = this.transformToDto(savedAlarm);
+    const locationName = location.name;
 
-    // Find location contact
-    const locationContact = location.users.find(
+    // Send to location contact
+    const locationContact = location.users?.find(
       (user) => user.role === UserRole.LOCATION_CONTACT,
     );
 
     if (locationContact) {
-      console.log('Location contact found:', locationContact.email);
-      this.mailService.sendAlarmNotificationEmail(
+      console.log('Sending to location contact:', locationContact.email);
+      await this.mailService.sendAlarmNotificationEmail(
         locationContact.email,
         alarmDto,
+        locationName,
       );
-    } else {
-      console.warn(`Location contact not found for location: ${location.id}`);
     }
 
-    // Find company admin
-    const company = location.company;
-    if (company && company.users) {
-      const companyAdmin = company.users.find(
-        (user) => user.role === UserRole.COMPANY_ADMIN,
-      );
+    // Send to company admin
+    const companyAdmin = location.company?.users?.find(
+      (user) => user.role === UserRole.COMPANY_ADMIN,
+    );
 
-      if (companyAdmin) {
-        console.log('Company admin found:', companyAdmin.email);
-        this.mailService.sendAlarmNotificationEmail(
-          companyAdmin.email,
-          alarmDto,
-        );
-      } else {
-        console.warn(`Company admin not found for company: ${company.id}`);
-      }
-    } else {
-      console.warn(
-        `Company or company users not found for location: ${location.id}`,
+    if (companyAdmin) {
+      console.log('Sending to company admin:', companyAdmin.email);
+      await this.mailService.sendAlarmNotificationEmail(
+        companyAdmin.email,
+        alarmDto,
+        locationName,
       );
     }
 
