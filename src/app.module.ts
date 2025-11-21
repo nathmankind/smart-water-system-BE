@@ -25,13 +25,23 @@ import { DashboardModule } from './dashboard/dashboard.module';
       database: process.env.DB_DATABASE,
       entities: [__dirname + '/**/*.entity{.ts,.js}'],
       synchronize: process.env.NODE_ENV !== 'production', // Set to false in production
-      ssl:
-        process.env.NODE_ENV === 'production'
-          ? { rejectUnauthorized: false }
-          : false,
-      // ssl: {
-      //   rejectUnauthorized: false,
-      // },
+      // ssl:
+      //   process.env.NODE_ENV === 'production'
+      //     ? { rejectUnauthorized: false }
+      //     : false,
+
+      ssl: process.env.DB_HOST?.includes('rds.amazonaws.com')
+        ? {
+            rejectUnauthorized: false,
+          }
+        : false,
+      extra: process.env.DB_HOST?.includes('rds.amazonaws.com')
+        ? {
+            ssl: {
+              rejectUnauthorized: false,
+            },
+          }
+        : undefined,
     }),
     UsersModule,
     CompaniesModule,

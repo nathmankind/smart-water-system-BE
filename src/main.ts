@@ -55,12 +55,18 @@ async function bootstrap() {
     user: process.env.DB_USERNAME,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_DATABASE,
-    ssl:
-      process.env.NODE_ENV === 'production'
-        ? {
-            rejectUnauthorized: false,
-          }
-        : false,
+    // ssl:
+    //   process.env.NODE_ENV === 'production'
+    //     ? {
+    //         rejectUnauthorized: false,
+    //       }
+    //     : false,
+
+    ssl: process.env.DB_HOST?.includes('rds.amazonaws.com')
+      ? {
+          rejectUnauthorized: false,
+        }
+      : false,
   });
 
   try {

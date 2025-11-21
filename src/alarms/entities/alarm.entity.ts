@@ -19,7 +19,7 @@ export enum AlarmType {
   CONDITION = 'condition',
 }
 
-@Entity('sensor_readings')
+@Entity('sensor_readings', { synchronize: false })
 export class Alarm {
   @PrimaryGeneratedColumn()
   id: number;
