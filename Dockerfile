@@ -36,22 +36,17 @@ RUN npm ci && npm cache clean --force
 COPY --from=builder /app/dist ./dist
 
 # Copy migrations and config
-# COPY --from=builder /app/src/migrations ./src/migrations
-# COPY --from=builder /app/src/config/typeorm.config.ts ./src/config/typeorm.config.ts
+COPY --from=builder /app/src/migrations ./src/migrations
+COPY --from=builder /app/src/config/typeorm.config.ts ./src/config/typeorm.config.ts
 
-# # Copy entities for migration (TypeORM needs them)
-# COPY --from=builder /app/src/users/entities ./src/users/entities
-# COPY --from=builder /app/src/companies/entities ./src/companies/entities
-# COPY --from=builder /app/src/locations/entities ./src/locations/entities
-
+# Copy entities for migration (TypeORM needs them)
+COPY --from=builder /app/src/users/entities ./src/users/entities
+COPY --from=builder /app/src/companies/entities ./src/companies/entities
+COPY --from=builder /app/src/locations/entities ./src/locations/entities
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nestjs -u 1001
-
-# Change ownership
-RUN chown -R nestjs:nodejs /app
-
 USER nestjs
 
 # Expose the port your NestJS app runs on (default is 3000)
@@ -61,4 +56,4 @@ EXPOSE 3000
 ENTRYPOINT ["dumb-init", "--"]
 
 # Start the application
-CMD ["node", "dist/main.js"]
+CMD ["node", "dist/src/main.js"]

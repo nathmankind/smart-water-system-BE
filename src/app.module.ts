@@ -5,14 +5,11 @@ import { UsersModule } from './users/users.module';
 import { CompaniesModule } from './companies/companies.module';
 import { AuthModule } from './auth/auth.module';
 import { MailModule } from './mail/mail.module';
-import { User } from './users/entities/user.entity';
-import { Company } from './companies/entities/company.entity';
 import { LocationsModule } from './locations/locations.module';
 import { AlarmsModule } from './alarms/alarms.module';
 import { DashboardController } from './dashboard/dashboard.controller';
 import { DashboardService } from './dashboard/dashboard.service';
 import { DashboardModule } from './dashboard/dashboard.module';
-import { typeOrmConfig } from './config/typeorm.config';
 
 @Module({
   imports: [
@@ -36,7 +33,6 @@ import { typeOrmConfig } from './config/typeorm.config';
       //   rejectUnauthorized: false,
       // },
     }),
-    // TypeOrmModule.forRoot(typeOrmConfig),
     UsersModule,
     CompaniesModule,
     AuthModule,
