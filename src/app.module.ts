@@ -12,6 +12,7 @@ import { AlarmsModule } from './alarms/alarms.module';
 import { DashboardController } from './dashboard/dashboard.controller';
 import { DashboardService } from './dashboard/dashboard.service';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { typeOrmConfig } from './config/typeorm.config';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
       //   rejectUnauthorized: false,
       // },
     }),
+    // TypeOrmModule.forRoot(typeOrmConfig),
     UsersModule,
     CompaniesModule,
     AuthModule,
