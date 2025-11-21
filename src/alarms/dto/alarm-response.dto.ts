@@ -5,6 +5,8 @@ export class AlarmResponseDto {
   deviceName: string;
   voltage: number;
   turbidity: number;
+  ph?: number;
+  temperature?: number;
   condition: string;
   timestamp: Date;
   severity: AlarmSeverity;

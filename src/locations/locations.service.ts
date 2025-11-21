@@ -11,6 +11,12 @@ import { CreateLocationDto } from './dto/create-location.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
 import { User, UserRole } from '../users/entities/user.entity';
 import { UsersService } from '../users/users.service';
+import {
+  LocationDetailsDto,
+  LocationContactInfo,
+  CurrentReadings,
+  AlarmSummary,
+} from './dto/location-details.dto';
 
 @Injectable()
 export class LocationsService {
@@ -123,7 +129,7 @@ export class LocationsService {
   async findByDeviceId(deviceId: string): Promise<Location | null> {
     return await this.locationsRepository.findOne({
       where: { deviceId },
-      relations: ['company', 'users'],
+      relations: ['company', 'company.users', 'users'],
     });
   }
 
@@ -148,5 +154,64 @@ export class LocationsService {
   async remove(id: string, currentUser: User): Promise<void> {
     const location = await this.findOne(id, currentUser);
     await this.locationsRepository.remove(location);
+  }
+
+  /**
+   * Get detailed location information with alarms and current readings
+   * This method is meant to be called from the controller with AlarmsService
+   */
+  async getLocationWithDetails(
+    id: string,
+    currentUser: User,
+    alarmSummary: AlarmSummary,
+  ): Promise<LocationDetailsDto> {
+    const location = await this.findOne(id, currentUser);
+
+    // Find the location contact user
+    const locationContact = location.users?.find(
+      (user) => user.role === UserRole.LOCATION_CONTACT,
+    );
+
+    if (!locationContact) {
+      throw new NotFoundException(
+        'Location contact not found for this location',
+      );
+    }
+
+    const locationContactInfo: LocationContactInfo = {
+      id: locationContact.id,
+      firstName: locationContact.firstName,
+      lastName: locationContact.lastName,
+      email: locationContact.email,
+      phone: location.contactPhone,
+      isActive: locationContact.isActive,
+    };
+
+    const locationDetails: LocationDetailsDto = {
+      id: location.id,
+      name: location.name,
+      deviceId: location.deviceId,
+      address: {
+        street: location.address,
+        city: location.city,
+        province: location.province,
+        postalCode: location.postalCode,
+        country: location.country,
+      },
+      contactInfo: {
+        email: location.contactEmail,
+        phone: location.contactPhone,
+      },
+      company: {
+        id: location.company.id,
+        name: location.company.name,
+      },
+      locationContact: locationContactInfo,
+      alarmSummary,
+      createdAt: location.createdAt,
+      updatedAt: location.updatedAt,
+    };
+
+    return locationDetails;
   }
 }

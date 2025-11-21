@@ -3,6 +3,7 @@ import { AlarmsService } from './alarms.service';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Alarm } from './entities/alarm.entity';
 import { LocationsService } from '../locations/locations.service';
+import { MailService } from '../mail/mail.service';
 
 describe('AlarmsService', () => {
   let service: AlarmsService;
@@ -29,6 +30,13 @@ describe('AlarmsService', () => {
             findAll: jest.fn().mockResolvedValue([]),
             findByCompany: jest.fn().mockResolvedValue([]),
             findOne: jest.fn().mockResolvedValue({}),
+            findByDeviceId: jest.fn().mockResolvedValue({}),
+          },
+        },
+        {
+          provide: MailService,
+          useValue: {
+            sendAlarmNotificationEmail: jest.fn().mockResolvedValue(null),
           },
         },
       ],

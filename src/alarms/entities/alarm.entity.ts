@@ -13,11 +13,13 @@ export enum AlarmSeverity {
 
 export enum AlarmType {
   TURBIDITY = 'turbidity',
+  PH = 'ph',
+  TEMPERATURE = 'temperature',
   VOLTAGE = 'voltage',
   CONDITION = 'condition',
 }
 
-@Entity('sensor_data')
+@Entity('sensor_readings')
 export class Alarm {
   @PrimaryGeneratedColumn()
   id: number;
@@ -30,6 +32,12 @@ export class Alarm {
 
   @Column()
   turbidity: number;
+
+  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true })
+  ph: number;
+
+  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true })
+  temperature: number;
 
   @Column()
   condition: string;
