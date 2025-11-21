@@ -5,6 +5,7 @@ import { ValidationPipe } from '@nestjs/common';
 import * as client from 'prom-client';
 import { Client } from 'pg';
 import { AlarmsService } from './alarms/alarms.service';
+import { DataSource } from 'typeorm';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -119,6 +120,11 @@ async function bootstrap() {
     // Don't fail the app if listener setup fails
   }
 
+  // Run migrations
+  const dataSource = app.get(DataSource);
+  console.log('Running migrations...');
+  await dataSource.runMigrations();
+  console.log('Migrations completed successfully!');
   // -----------------------------------------
   // START SERVER
   // -----------------------------------------
