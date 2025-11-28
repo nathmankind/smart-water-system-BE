@@ -61,6 +61,12 @@ async function bootstrap() {
             rejectUnauthorized: false,
           }
         : false,
+
+    // ssl: process.env.DB_HOST?.includes('rds.amazonaws.com')
+    //   ? {
+    //       rejectUnauthorized: false,
+    //     }
+    //   : false,
   });
 
   try {

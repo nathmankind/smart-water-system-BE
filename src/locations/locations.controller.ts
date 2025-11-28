@@ -125,7 +125,7 @@ export class LocationsController {
   ) {
     const location = await this.locationsService.findOne(id, currentUser);
 
-    // Get latest reading first
+    // Get latest reading
     const latestReading = await this.alarmsService.getLatestReading(
       location.deviceId,
     );
@@ -158,29 +158,29 @@ export class LocationsController {
 
     const currentReadings: CurrentReadings = latestReading
       ? {
-          turbidity: latestReading.turbidity,
-          ph: latestReading.ph ? Number(latestReading.ph) : 0,
-          temperature: latestReading.temperature
-            ? Number(latestReading.temperature)
-            : 0,
-          voltage: Number(latestReading.voltage),
-          condition: latestReading.condition,
-          timestamp: latestReading.timestamp,
+          ph: Number(latestReading.ph),
+          phStatus: latestReading.phStatus,
+          turbidityNtu: latestReading.turbidityNtu,
+          turbidityStatus: latestReading.turbidityStatus,
+          waterQuality: latestReading.waterQuality || '',
+          explanation: latestReading.explanation,
+          createdAt: latestReading.createdAt,
         }
       : {
-          turbidity: 0,
-          ph: 0.0,
-          temperature: 0.0,
-          voltage: 0.0,
-          condition: '--',
-          timestamp: new Date(),
+          ph: 0,
+          phStatus: '',
+          turbidityNtu: 0,
+          turbidityStatus: '',
+          waterQuality: '',
+          explanation: 'N/A',
+          createdAt: new Date(),
         };
 
     const alarmSummary: AlarmSummary = {
       total: alarms.length,
       critical: criticalCount,
       warning: warningCount,
-      activeAlarms: activeAlarm ? [activeAlarm] : [], // Only show if there's an active alarm
+      activeAlarms: activeAlarm ? [activeAlarm] : [],
       latestReading: currentReadings,
     };
 
@@ -190,6 +190,8 @@ export class LocationsController {
       alarmSummary,
     );
   }
+
+  // =========
 
   @Patch(':id')
   @Roles(UserRole.SUPERADMIN, UserRole.COMPANY_ADMIN)

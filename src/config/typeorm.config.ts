@@ -23,9 +23,9 @@ export const dataSource = new DataSource({
           rejectUnauthorized: false,
         }
       : false,
-  //   ssl: {
-  //     rejectUnauthorized: false,
-  //   },
+  // ssl: {
+  //   rejectUnauthorized: false,
+  // },
   logging: true,
 });
 

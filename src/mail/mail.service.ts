@@ -7,12 +7,10 @@ export class MailService {
   private transporter;
 
   constructor() {
-    // For development, you can use a service like Mailtrap or Ethereal
-    // For production, use your actual email service (Gmail, SendGrid, etc.)
     this.transporter = nodemailer.createTransport({
       host: process.env.MAIL_HOST || 'smtp.ethereal.email',
       port: parseInt(process.env.MAIL_PORT!) || 587,
-      secure: false,
+      secure: process.env.MAIL_PORT === '465',
       auth: {
         user: process.env.MAIL_USER,
         pass: process.env.MAIL_PASSWORD,
@@ -44,7 +42,6 @@ export class MailService {
     try {
       const info = await this.transporter.sendMail(mailOptions);
       console.log('Email sent: ', info.messageId);
-      // For development with Ethereal, log the preview URL
       console.log('Preview URL: ', nodemailer.getTestMessageUrl(info));
       return info;
     } catch (error) {
@@ -57,25 +54,33 @@ export class MailService {
     email: string,
     alarm: AlarmResponseDto,
     locationName?: string,
+    notificationType: 'ALERT' | 'ALL_CLEAR' = 'ALERT',
   ) {
-    const severityColor =
-      alarm.severity === 'critical'
+    const isNormal = notificationType === 'ALL_CLEAR';
+    const severityColor = isNormal
+      ? '#28a745'
+      : alarm.severity === 'critical'
         ? '#dc3545'
         : alarm.severity === 'warning'
           ? '#ffc107'
           : '#17a2b8';
 
-    const severityEmoji =
-      alarm.severity === 'critical'
+    const severityEmoji = isNormal
+      ? '✅'
+      : alarm.severity === 'critical'
         ? '🔴'
         : alarm.severity === 'warning'
           ? '⚠️'
           : 'ℹ️';
 
+    const subject = isNormal
+      ? `✅ All Clear - ${alarm.deviceName} - Water Quality Normal`
+      : `${severityEmoji} ${alarm.severity.toUpperCase()} Alert - ${alarm.deviceName}`;
+
     const mailOptions = {
       from: process.env.MAIL_FROM || 'noreply@yourapp.com',
       to: email,
-      subject: `${severityEmoji} ${alarm.severity.toUpperCase()} Alert - ${alarm.deviceName}`,
+      subject,
       html: `
         <!DOCTYPE html>
         <html>
@@ -91,16 +96,27 @@ export class MailService {
             .detail-value { color: #333; }
             .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
             .button { background-color: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; margin-top: 15px; }
+            .normal-banner { background-color: #d4edda; color: #155724; padding: 15px; border-radius: 5px; margin: 15px 0; text-align: center; font-weight: bold; }
           </style>
         </head>
         <body>
           <div class="container">
             <div class="header">
-              <h1>${severityEmoji} ${alarm.severity.toUpperCase()} ALARM</h1>
+              <h1>${severityEmoji} ${isNormal ? 'ALL CLEAR' : alarm.severity.toUpperCase()}</h1>
               <p style="margin: 0; font-size: 18px;">${locationName || alarm.deviceName}</p>
             </div>
             <div class="content">
-              <p><strong>Alert Message:</strong></p>
+              ${
+                isNormal
+                  ? `
+                <div class="normal-banner">
+                  ✅ Water quality has returned to normal levels
+                </div>
+              `
+                  : ''
+              }
+              
+              <p><strong>${isNormal ? 'Status:' : 'Alert Message:'}</strong></p>
               <p style="font-size: 16px; color: ${severityColor};">${alarm.message}</p>
               
               <div class="details">
@@ -110,40 +126,24 @@ export class MailService {
                   <span class="detail-value">${alarm.deviceName}</span>
                 </div>
                 <div class="detail-row">
-                  <span class="detail-label">Turbidity:</span>
-                  <span class="detail-value">${alarm.turbidity} NTU</span>
-                </div>
-                ${
-                  alarm.ph
-                    ? `
-                <div class="detail-row">
                   <span class="detail-label">pH Level:</span>
-                  <span class="detail-value">${alarm.ph}</span>
-                </div>
-                `
-                    : ''
-                }
-                ${
-                  alarm.temperature
-                    ? `
-                <div class="detail-row">
-                  <span class="detail-label">Temperature:</span>
-                  <span class="detail-value">${alarm.temperature}°C</span>
-                </div>
-                `
-                    : ''
-                }
-                <div class="detail-row">
-                  <span class="detail-label">Voltage:</span>
-                  <span class="detail-value">${alarm.voltage}V</span>
+                  <span class="detail-value">${alarm.ph} (${alarm.phStatus})</span>
                 </div>
                 <div class="detail-row">
-                  <span class="detail-label">Condition:</span>
-                  <span class="detail-value">${alarm.condition}</span>
+                  <span class="detail-label">Turbidity:</span>
+                  <span class="detail-value">${alarm.turbidityNtu} NTU (${alarm.turbidityStatus})</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Water Quality:</span>
+                  <span class="detail-value">${alarm.waterQuality || 'N/A'}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Explanation:</span>
+                  <span class="detail-value">${alarm.explanation}</span>
                 </div>
                 <div class="detail-row">
                   <span class="detail-label">Time:</span>
-                  <span class="detail-value">${new Date(alarm.timestamp).toLocaleString()}</span>
+                  <span class="detail-value">${new Date(alarm.createdAt).toLocaleString()}</span>
                 </div>
               </div>
 
@@ -154,7 +154,7 @@ export class MailService {
               </div>
             </div>
             <div class="footer">
-              <p>This is an automated alert from your Water Quality Monitoring System</p>
+              <p>This is an automated notification from your Water Quality Monitoring System</p>
               <p>Please do not reply to this email</p>
             </div>
           </div>
@@ -166,7 +166,7 @@ export class MailService {
     try {
       const info = await this.transporter.sendMail(mailOptions);
       console.log(
-        'Alarm notification sent to:',
+        'Notification sent to:',
         email,
         '| Message ID:',
         info.messageId,
@@ -174,8 +174,7 @@ export class MailService {
       console.log('Preview URL: ', nodemailer.getTestMessageUrl(info));
       return info;
     } catch (error) {
-      console.error('Error sending alarm notification:', error);
-      // Don't throw - we don't want email failures to break the alarm processing
+      console.error('Error sending notification:', error);
       return null;
     }
   }

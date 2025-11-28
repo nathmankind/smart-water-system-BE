@@ -1,36 +1,20 @@
 import { Injectable, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, In } from 'typeorm';
+import { Repository } from 'typeorm';
 import { Alarm, AlarmSeverity, AlarmType } from './entities/alarm.entity';
 import { AlarmResponseDto, AlarmQueryDto } from './dto/alarm-response.dto';
 import { User, UserRole } from '../users/entities/user.entity';
+import { Location } from '../locations/entities/location.entity';
 import { LocationsService } from '../locations/locations.service';
-import { Location } from 'src/locations/entities/location.entity';
 import { MailService } from '../mail/mail.service';
 
 @Injectable()
 export class AlarmsService {
-  // Threshold configuration
-  private readonly THRESHOLDS = {
-    turbidity: {
-      critical: 200,
-      warning: 150,
-    },
-    voltage: {
-      critical: { min: 0, max: 1.5 },
-      warning: { min: 1.5, max: 2.0 },
-    },
-    ph: {
-      critical: { min: 0, max: 6.0, maxHigh: 8.5 },
-      warning: { min: 6.0, max: 6.5, maxHigh: 8.0 },
-    },
-    temperature: {
-      critical: { min: 0, max: 35 },
-      warning: { min: 5, max: 30 },
-    },
-  };
-
-  private lastNotificationTime: Map<string, number> = new Map();
+  // Track last notification state per device to detect state changes
+  private lastNotificationState: Map<
+    string,
+    { isAnomalous: boolean; timestamp: number }
+  > = new Map();
   private readonly NOTIFICATION_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
 
   constructor(
@@ -43,37 +27,51 @@ export class AlarmsService {
   ) {}
 
   /**
-   * Determine alarm severity based on sensor values
+   * Determine if a reading is anomalous (needs alert)
+   */
+  private isAnomalous(alarm: Alarm): boolean {
+    // Check for invalid/problematic states
+    const problematicPhStatuses = ['INVALID', 'IN AIR'];
+    const problematicTurbidityStatuses = ['NO INPUT', 'NOT CLEAN'];
+    const problematicWaterQualities = ['POOR', 'UNKNOWN', ''];
+
+    return (
+      problematicPhStatuses.includes(alarm.phStatus) ||
+      problematicTurbidityStatuses.includes(alarm.turbidityStatus) ||
+      problematicWaterQualities.includes(alarm.waterQuality || '') ||
+      alarm.ph === 0 ||
+      alarm.turbidityNtu >= 100 ||
+      (alarm.ph > 0 && (alarm.ph < 6.5 || alarm.ph > 8.5))
+    );
+  }
+
+  /**
+   * Determine alarm severity
    */
   private determineSeverity(alarm: Alarm): AlarmSeverity {
-    const criticalConditions = [
-      alarm.turbidity >= this.THRESHOLDS.turbidity.critical,
-      alarm.voltage <= this.THRESHOLDS.voltage.critical.max,
-      alarm.condition === 'NO INPUT',
-      alarm.ph &&
-        (alarm.ph < this.THRESHOLDS.ph.critical.min ||
-          alarm.ph > this.THRESHOLDS.ph.critical.maxHigh),
-      alarm.temperature &&
-        (alarm.temperature < this.THRESHOLDS.temperature.critical.min ||
-          alarm.temperature > this.THRESHOLDS.temperature.critical.max),
-    ];
+    // If readings look good
+    if (!this.isAnomalous(alarm)) {
+      return AlarmSeverity.NORMAL;
+    }
 
-    const warningConditions = [
-      alarm.turbidity >= this.THRESHOLDS.turbidity.warning &&
-        alarm.turbidity < this.THRESHOLDS.turbidity.critical,
-      alarm.voltage > this.THRESHOLDS.voltage.critical.max &&
-        alarm.voltage <= this.THRESHOLDS.voltage.warning.max,
-      alarm.ph &&
-        (alarm.ph < this.THRESHOLDS.ph.warning.min ||
-          alarm.ph > this.THRESHOLDS.ph.warning.maxHigh),
-      alarm.temperature &&
-        (alarm.temperature < this.THRESHOLDS.temperature.warning.min ||
-          alarm.temperature > this.THRESHOLDS.temperature.warning.max),
-    ];
-
-    if (criticalConditions.some((condition) => condition)) {
+    // Critical conditions
+    if (
+      alarm.phStatus === 'INVALID' ||
+      alarm.phStatus === 'IN AIR' ||
+      alarm.turbidityStatus === 'NOT CLEAN' ||
+      alarm.ph === 0 ||
+      alarm.turbidityNtu > 200
+    ) {
       return AlarmSeverity.CRITICAL;
-    } else if (warningConditions.some((condition) => condition)) {
+    }
+
+    // Warning conditions
+    if (
+      alarm.turbidityStatus === 'NO INPUT' ||
+      alarm.waterQuality === 'POOR' ||
+      alarm.waterQuality === 'UNKNOWN' ||
+      (alarm.ph > 0 && (alarm.ph < 6.5 || alarm.ph > 8.5))
+    ) {
       return AlarmSeverity.WARNING;
     }
 
@@ -81,99 +79,72 @@ export class AlarmsService {
   }
 
   /**
-   * Determine alarm types based on thresholds
+   * Determine alarm types
    */
   private determineAlarmTypes(alarm: Alarm): AlarmType[] {
     const types: AlarmType[] = [];
 
-    if (alarm.turbidity >= this.THRESHOLDS.turbidity.warning) {
-      types.push(AlarmType.TURBIDITY);
-    }
-
-    if (alarm.voltage <= this.THRESHOLDS.voltage.warning.max) {
-      types.push(AlarmType.VOLTAGE);
-    }
-
     if (
-      alarm.ph &&
-      (alarm.ph < this.THRESHOLDS.ph.warning.min ||
-        alarm.ph > this.THRESHOLDS.ph.warning.maxHigh)
+      alarm.phStatus === 'INVALID' ||
+      alarm.phStatus === 'IN AIR' ||
+      alarm.ph === 0 ||
+      (alarm.ph > 0 && (alarm.ph < 6.5 || alarm.ph > 8.5))
     ) {
       types.push(AlarmType.PH);
     }
 
+    if (alarm.turbidityStatus !== 'CLEAN' || alarm.turbidityNtu >= 100) {
+      types.push(AlarmType.TURBIDITY);
+    }
+
     if (
-      alarm.temperature &&
-      (alarm.temperature < this.THRESHOLDS.temperature.warning.min ||
-        alarm.temperature > this.THRESHOLDS.temperature.warning.max)
+      alarm.waterQuality &&
+      ['POOR', 'UNKNOWN'].includes(alarm.waterQuality)
     ) {
-      types.push(AlarmType.TEMPERATURE);
+      types.push(AlarmType.WATER_QUALITY);
     }
 
-    if (alarm.condition !== 'CLEAN') {
-      types.push(AlarmType.CONDITION);
+    if (types.length === 0) {
+      types.push(AlarmType.SYSTEM);
     }
 
-    return types.length > 0 ? types : [AlarmType.CONDITION];
+    return types;
   }
 
   /**
-   * Generate human-readable message
+   * Generate message based on severity and explanation
    */
-  private generateMessage(
-    alarm: Alarm,
-    severity: AlarmSeverity,
-    types: AlarmType[],
-  ): string {
-    const messages: string[] = [];
-
-    if (types.includes(AlarmType.TURBIDITY)) {
-      messages.push(`High turbidity: ${alarm.turbidity} NTU`);
-    }
-
-    if (types.includes(AlarmType.VOLTAGE)) {
-      messages.push(`Low voltage: ${alarm.voltage}V`);
-    }
-
-    if (types.includes(AlarmType.PH) && alarm.ph) {
-      messages.push(`pH out of range: ${alarm.ph}`);
-    }
-
-    if (types.includes(AlarmType.TEMPERATURE) && alarm.temperature) {
-      messages.push(`Temperature out of range: ${alarm.temperature}°C`);
-    }
-
-    if (types.includes(AlarmType.CONDITION)) {
-      messages.push(`Condition: ${alarm.condition}`);
-    }
-
+  private generateMessage(alarm: Alarm, severity: AlarmSeverity): string {
     const prefix =
       severity === AlarmSeverity.CRITICAL
         ? '🔴 CRITICAL'
         : severity === AlarmSeverity.WARNING
           ? '⚠️ WARNING'
-          : 'ℹ️ INFO';
+          : severity === AlarmSeverity.NORMAL
+            ? '✅ NORMAL'
+            : 'ℹ️ INFO';
 
-    return `${prefix} - ${messages.join(', ')}`;
+    return `${prefix} - ${alarm.explanation}`;
   }
 
   /**
-   * Transform alarm data to response DTO
+   * Transform alarm to DTO
    */
   private transformToDto(alarm: Alarm): AlarmResponseDto {
     const severity = this.determineSeverity(alarm);
     const alarmType = this.determineAlarmTypes(alarm);
-    const message = this.generateMessage(alarm, severity, alarmType);
+    const message = this.generateMessage(alarm, severity);
 
     return {
       id: alarm.id,
       deviceName: alarm.deviceName,
-      voltage: Number(alarm.voltage),
-      turbidity: alarm.turbidity,
-      ph: alarm.ph ? Number(alarm.ph) : undefined,
-      temperature: alarm.temperature ? Number(alarm.temperature) : undefined,
-      condition: alarm.condition,
-      timestamp: alarm.timestamp,
+      ph: Number(alarm.ph),
+      phStatus: alarm.phStatus,
+      turbidityNtu: alarm.turbidityNtu,
+      turbidityStatus: alarm.turbidityStatus,
+      waterQuality: alarm.waterQuality || '',
+      explanation: alarm.explanation,
+      createdAt: alarm.createdAt,
       severity,
       alarmType,
       message,
@@ -181,21 +152,142 @@ export class AlarmsService {
   }
 
   /**
-   * Get accessible device IDs for a user
+   * Check if we should send notification based on state change
    */
+  private shouldSendNotification(
+    deviceName: string,
+    currentIsAnomalous: boolean,
+  ): boolean {
+    const lastState = this.lastNotificationState.get(deviceName);
+    const now = Date.now();
+
+    // First reading ever - send notification
+    if (!lastState) {
+      this.lastNotificationState.set(deviceName, {
+        isAnomalous: currentIsAnomalous,
+        timestamp: now,
+      });
+      return true;
+    }
+
+    // State changed (anomalous -> normal OR normal -> anomalous)
+    if (lastState.isAnomalous !== currentIsAnomalous) {
+      this.lastNotificationState.set(deviceName, {
+        isAnomalous: currentIsAnomalous,
+        timestamp: now,
+      });
+      return true;
+    }
+
+    // Same state, but cooldown expired (send reminder)
+    if (now - lastState.timestamp > this.NOTIFICATION_COOLDOWN_MS) {
+      this.lastNotificationState.set(deviceName, {
+        isAnomalous: currentIsAnomalous,
+        timestamp: now,
+      });
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Process new alarm reading
+   */
+  async processNewAlarm(alarmData: Partial<Alarm>): Promise<void> {
+    console.log('processNewAlarm method called with:', alarmData);
+
+    const deviceName = alarmData.deviceName!;
+    const alarmDto = this.transformToDto(alarmData as Alarm);
+    const isAnomalous = this.isAnomalous(alarmData as Alarm);
+
+    console.log(
+      `📊 Reading is ${isAnomalous ? 'ANOMALOUS' : 'NORMAL'} - Severity: ${alarmDto.severity}`,
+    );
+
+    // Check if we should send notification
+    if (!this.shouldSendNotification(deviceName, isAnomalous)) {
+      console.log(
+        '⏭️  Notification skipped - no state change or cooldown active',
+      );
+      return;
+    }
+
+    // Find location
+    const location = await this.locationsRepository.findOne({
+      where: { deviceId: deviceName },
+      relations: ['company', 'company.users', 'users'],
+    });
+
+    if (!location) {
+      console.error(`Location not found for device: ${deviceName}`);
+      return;
+    }
+
+    console.log('Location found:', location.id);
+    const locationName = location.name;
+
+    // Determine notification type
+    const notificationType = isAnomalous ? 'ALERT' : 'ALL_CLEAR';
+
+    // Send to location contact
+    const locationContact = location.users?.find(
+      (user) => user.role === UserRole.LOCATION_CONTACT,
+    );
+
+    if (locationContact) {
+      console.log(
+        `📧 Sending ${notificationType} to location contact:`,
+        locationContact.email,
+      );
+      await this.mailService.sendAlarmNotificationEmail(
+        locationContact.email,
+        alarmDto,
+        locationName,
+        notificationType,
+      );
+    }
+
+    // Send to company admin
+    const companyAdmin = location.company?.users?.find(
+      (user) => user.role === UserRole.COMPANY_ADMIN,
+    );
+
+    if (companyAdmin) {
+      console.log(
+        `📧 Sending ${notificationType} to company admin:`,
+        companyAdmin.email,
+      );
+      await this.mailService.sendAlarmNotificationEmail(
+        companyAdmin.email,
+        alarmDto,
+        locationName,
+        notificationType,
+      );
+    }
+
+    console.log('✅ Notification processing completed');
+  }
+
+  // ... rest of your service methods (findAll, findByDevice, etc.) - update to use new schema
+
+  async getLatestReading(deviceId: string): Promise<Alarm | null> {
+    return await this.alarmsRepository.findOne({
+      where: { deviceName: deviceId },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
   private async getAccessibleDeviceIds(currentUser: User): Promise<string[]> {
     let locations: Location[] = [];
 
     if (currentUser.role === UserRole.SUPERADMIN) {
-      // Superadmin can see all locations
       locations = await this.locationsService.findAll(currentUser);
     } else if (currentUser.role === UserRole.COMPANY_ADMIN) {
-      // Company admin can see their company's locations
       locations = await this.locationsService.findByCompany(
         currentUser.companyId,
       );
     } else if (currentUser.role === UserRole.LOCATION_CONTACT) {
-      // Location contact can only see their location
       const location = await this.locationsService.findOne(
         currentUser.locationId,
         currentUser,
@@ -206,28 +298,22 @@ export class AlarmsService {
     return locations.map((loc) => loc.deviceId);
   }
 
-  /**
-   * Get alarms with optional filters
-   */
   async findAll(
     query: AlarmQueryDto,
     currentUser: User,
   ): Promise<AlarmResponseDto[]> {
-    // Get accessible device IDs based on user role
     const accessibleDeviceIds = await this.getAccessibleDeviceIds(currentUser);
 
     if (accessibleDeviceIds.length === 0) {
       return [];
     }
 
-    // Build query
     const queryBuilder = this.alarmsRepository
       .createQueryBuilder('alarm')
       .where('alarm.device_name IN (:...deviceIds)', {
         deviceIds: accessibleDeviceIds,
       });
 
-    // Filter by specific device if provided
     if (query.deviceId) {
       if (!accessibleDeviceIds.includes(query.deviceId)) {
         throw new ForbiddenException('Access denied to this device');
@@ -237,34 +323,29 @@ export class AlarmsService {
       });
     }
 
-    // Filter by date range
     if (query.startDate && query.endDate) {
-      queryBuilder.andWhere('alarm.timestamp BETWEEN :startDate AND :endDate', {
-        startDate: query.startDate,
-        endDate: query.endDate,
-      });
+      queryBuilder.andWhere(
+        'alarm.created_at BETWEEN :startDate AND :endDate',
+        {
+          startDate: query.startDate,
+          endDate: query.endDate,
+        },
+      );
     }
 
-    // Order by timestamp descending (newest first)
-    queryBuilder.orderBy('alarm.timestamp', 'DESC');
-
-    // Limit results
+    queryBuilder.orderBy('alarm.created_at', 'DESC');
     const limit = query.limit || 100;
     queryBuilder.limit(limit);
 
     const alarms = await queryBuilder.getMany();
-
-    // Transform to DTOs and apply severity/type filters
     let transformedAlarms = alarms.map((alarm) => this.transformToDto(alarm));
 
-    // Filter by severity if provided
     if (query.severity) {
       transformedAlarms = transformedAlarms.filter(
         (alarm) => alarm.severity === query.severity,
       );
     }
 
-    // Filter by type if provided
     if (query.type) {
       transformedAlarms = transformedAlarms.filter((alarm) =>
         alarm.alarmType.includes(query.type!),
@@ -274,9 +355,6 @@ export class AlarmsService {
     return transformedAlarms;
   }
 
-  /**
-   * Get alarms for a specific device
-   */
   async findByDevice(
     deviceId: string,
     currentUser: User,
@@ -284,19 +362,8 @@ export class AlarmsService {
     return this.findAll({ deviceId, limit: 100 }, currentUser);
   }
 
-  /**
-   * Get latest reading for a device
-   */
-  async getLatestReading(deviceId: string): Promise<Alarm | null> {
-    return await this.alarmsRepository.findOne({
-      where: { deviceName: deviceId },
-      order: { timestamp: 'DESC' },
-    });
-  }
+  // Add these methods to the AlarmsService class
 
-  /**
-   * Get critical alarms only
-   */
   async findCritical(currentUser: User): Promise<AlarmResponseDto[]> {
     return this.findAll(
       { severity: AlarmSeverity.CRITICAL, limit: 50 },
@@ -304,9 +371,6 @@ export class AlarmsService {
     );
   }
 
-  /**
-   * Get alarm statistics for a device
-   */
   async getStatistics(deviceId: string, currentUser: User) {
     const alarms = await this.findByDevice(deviceId, currentUser);
 
@@ -316,161 +380,22 @@ export class AlarmsService {
         .length,
       warning: alarms.filter((a) => a.severity === AlarmSeverity.WARNING)
         .length,
+      normal: alarms.filter((a) => a.severity === AlarmSeverity.NORMAL).length,
       info: alarms.filter((a) => a.severity === AlarmSeverity.INFO).length,
       byType: {
+        ph: alarms.filter((a) => a.alarmType.includes(AlarmType.PH)).length,
         turbidity: alarms.filter((a) =>
           a.alarmType.includes(AlarmType.TURBIDITY),
         ).length,
-        ph: alarms.filter((a) => a.alarmType.includes(AlarmType.PH)).length,
-        temperature: alarms.filter((a) =>
-          a.alarmType.includes(AlarmType.TEMPERATURE),
+        waterQuality: alarms.filter((a) =>
+          a.alarmType.includes(AlarmType.WATER_QUALITY),
         ).length,
-        voltage: alarms.filter((a) => a.alarmType.includes(AlarmType.VOLTAGE))
+        system: alarms.filter((a) => a.alarmType.includes(AlarmType.SYSTEM))
           .length,
-        condition: alarms.filter((a) =>
-          a.alarmType.includes(AlarmType.CONDITION),
-        ).length,
       },
       latest: alarms[0] || null,
     };
 
     return stats;
-  }
-
-  // async processNewAlarm(alarmData: Partial<Alarm>): Promise<Alarm> {
-  //   console.log('processNewAlarm method called with:', alarmData);
-
-  //   const newAlarm = this.alarmsRepository.create(alarmData);
-  //   const savedAlarm = await this.alarmsRepository.save(newAlarm);
-  //   console.log('Alarm saved:', savedAlarm);
-
-  //   // Find location with company and all users
-  //   const location = await this.locationsRepository.findOne({
-  //     where: { deviceId: savedAlarm.deviceName },
-  //     relations: ['company', 'company.users', 'users'],
-  //   });
-
-  //   if (!location) {
-  //     console.error(`Location not found for device: ${savedAlarm.deviceName}`);
-  //     return savedAlarm;
-  //   }
-  //   console.log('Location found:', location.id);
-
-  //   const alarmDto = this.transformToDto(savedAlarm);
-  //   const locationName = location.name;
-
-  //   // Send to location contact
-  //   const locationContact = location.users?.find(
-  //     (user) => user.role === UserRole.LOCATION_CONTACT,
-  //   );
-
-  //   if (locationContact) {
-  //     console.log('Sending to location contact:', locationContact.email);
-  //     await this.mailService.sendAlarmNotificationEmail(
-  //       locationContact.email,
-  //       alarmDto,
-  //       locationName,
-  //     );
-  //   }
-
-  //   // Send to company admin
-  //   const companyAdmin = location.company?.users?.find(
-  //     (user) => user.role === UserRole.COMPANY_ADMIN,
-  //   );
-
-  //   if (companyAdmin) {
-  //     console.log('Sending to company admin:', companyAdmin.email);
-  //     await this.mailService.sendAlarmNotificationEmail(
-  //       companyAdmin.email,
-  //       alarmDto,
-  //       locationName,
-  //     );
-  //   }
-
-  //   return savedAlarm;
-  // }
-
-  private shouldSendNotification(deviceName: string): boolean {
-    const now = Date.now();
-    const lastTime = this.lastNotificationTime.get(deviceName);
-
-    if (lastTime && now - lastTime < this.NOTIFICATION_COOLDOWN_MS) {
-      const minutesRemaining = Math.ceil(
-        (this.NOTIFICATION_COOLDOWN_MS - (now - lastTime)) / 60000,
-      );
-      console.log(
-        `⏳ Cooldown active for ${deviceName}. Next notification in ${minutesRemaining} minutes`,
-      );
-      return false;
-    }
-
-    this.lastNotificationTime.set(deviceName, now);
-    return true;
-  }
-
-  async processNewAlarm(alarmData: Partial<Alarm>): Promise<void> {
-    console.log('processNewAlarm method called with:', alarmData);
-
-    const deviceName = alarmData.deviceName as string;
-
-    // Transform to DTO to check severity
-    const alarmDto = this.transformToDto(alarmData as Alarm);
-
-    // Only send notifications for critical and warning alarms
-    if (alarmDto.severity !== 'critical' && alarmDto.severity !== 'warning') {
-      console.log(
-        `⏭️  Skipping notification - severity is ${alarmDto.severity}`,
-      );
-      return;
-    }
-
-    // Check rate limiting
-    if (!this.shouldSendNotification(deviceName)) {
-      return;
-    }
-
-    // Find location with company and all users
-    const location = await this.locationsRepository.findOne({
-      where: { deviceId: deviceName },
-      relations: ['company', 'company.users', 'users'],
-    });
-
-    if (!location) {
-      console.error(`Location not found for device: ${deviceName}`);
-      return;
-    }
-    console.log('Location found:', location.id);
-
-    const locationName = location.name;
-
-    // Send to location contact
-    const locationContact = location.users?.find(
-      (user) => user.role === UserRole.LOCATION_CONTACT,
-    );
-
-    if (locationContact) {
-      console.log('Sending to location contact:', locationContact.email);
-      await this.mailService.sendAlarmNotificationEmail(
-        locationContact.email,
-        alarmDto,
-        locationName,
-      );
-    }
-
-    // Send to company admin
-    const companyAdmin = location.company?.users?.find(
-      (user) => user.role === UserRole.COMPANY_ADMIN,
-    );
-
-    if (companyAdmin) {
-      console.log('Sending to company admin:', companyAdmin.email);
-      await this.mailService.sendAlarmNotificationEmail(
-        companyAdmin.email,
-        alarmDto,
-        locationName,
-      );
-    }
-
-    console.log('✅ Notification processing completed');
   }
 }

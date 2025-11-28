@@ -36,7 +36,7 @@ RUN npm ci && npm cache clean --force
 COPY --from=builder /app/dist ./dist
 
 # Copy migrations and config
-COPY --from=builder /app/src/migrations ./src/migrations
+# COPY --from=builder /app/src/migrations ./src/migrations
 COPY --from=builder /app/src/config/typeorm.config.ts ./src/config/typeorm.config.ts
 
 # Copy entities for migration (TypeORM needs them)
