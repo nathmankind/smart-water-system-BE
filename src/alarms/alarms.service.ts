@@ -194,6 +194,9 @@ export class AlarmsService {
   /**
    * Process new alarm reading
    */
+  /**
+   * Process new alarm reading
+   */
   async processNewAlarm(alarmData: Partial<Alarm>): Promise<void> {
     console.log('processNewAlarm method called with:', alarmData);
 
@@ -230,21 +233,33 @@ export class AlarmsService {
     // Determine notification type
     const notificationType = isAnomalous ? 'ALERT' : 'ALL_CLEAR';
 
-    // Send to location contact
-    const locationContact = location.users?.find(
-      (user) => user.role === UserRole.LOCATION_CONTACT,
-    );
+    // Send to ALL location contacts (not just one)
+    const locationContacts =
+      location.users?.filter(
+        (user) => user.role === UserRole.LOCATION_CONTACT,
+      ) || [];
 
-    if (locationContact) {
+    if (locationContacts.length > 0) {
       console.log(
-        `📧 Sending ${notificationType} to location contact:`,
-        locationContact.email,
+        `📧 Sending ${notificationType} to ${locationContacts.length} location contact(s)`,
       );
-      await this.mailService.sendAlarmNotificationEmail(
-        locationContact.email,
-        alarmDto,
-        locationName,
-        notificationType,
+
+      // Send email to all location contacts
+      const emailPromises = locationContacts.map((contact) => {
+        console.log(`   → Sending to location contact: ${contact.email}`);
+        return this.mailService.sendAlarmNotificationEmail(
+          contact.email,
+          alarmDto,
+          locationName,
+          notificationType,
+        );
+      });
+
+      // Send all emails in parallel
+      await Promise.all(emailPromises);
+    } else {
+      console.warn(
+        `⚠️  No location contacts found for location: ${location.id}`,
       );
     }
 
@@ -255,14 +270,17 @@ export class AlarmsService {
 
     if (companyAdmin) {
       console.log(
-        `📧 Sending ${notificationType} to company admin:`,
-        companyAdmin.email,
+        `📧 Sending ${notificationType} to company admin: ${companyAdmin.email}`,
       );
       await this.mailService.sendAlarmNotificationEmail(
         companyAdmin.email,
         alarmDto,
         locationName,
         notificationType,
+      );
+    } else {
+      console.warn(
+        `⚠️  No company admin found for company: ${location.company?.id}`,
       );
     }
 
