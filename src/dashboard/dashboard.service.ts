@@ -41,7 +41,7 @@ export class DashboardService {
     const activeAlarmsCount = allAlarms.filter(
       (alarm) =>
         (alarm.severity === 'critical' || alarm.severity === 'warning') &&
-        new Date(alarm.timestamp) > twentyFourHoursAgo,
+        new Date(alarm.createdAt) > twentyFourHoursAgo,
     ).length;
 
     // Get recent 10 alarms (any severity)

@@ -10,12 +10,13 @@ export class LocationContactInfo {
 }
 
 export class CurrentReadings {
-  turbidity: number;
   ph: number;
-  temperature: number;
-  voltage: number;
-  condition: string;
-  timestamp: Date;
+  phStatus: string;
+  turbidityNtu: number;
+  turbidityStatus: string;
+  waterQuality: string;
+  explanation: string;
+  createdAt: Date;
 }
 
 export class AlarmSummary {
