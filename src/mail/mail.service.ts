@@ -16,13 +16,6 @@ export class MailService {
         pass: process.env.MAIL_PASSWORD,
       },
     });
-    // this.transporter = nodemailer.createTransport({
-    //   service: 'gmail',
-    //   auth: {
-    //     user: 'johnoliver6p@gmail.com',
-    //     pass: 'zvlorbrzoxyxvkzb',
-    //   },
-    // });
   }
 
   async sendWelcomeEmail(
