@@ -38,7 +38,7 @@ jobs:
 
   deploy:
     needs: build
-    runs-on: self-hosted
+    runs-on: [self-hosted, ec2-deploy]
 
     steps:
       - name: Pull latest image from Docker Hub
